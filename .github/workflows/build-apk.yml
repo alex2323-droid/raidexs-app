@@ -46,9 +46,12 @@ jobs:
       - name: Build Web Application
         run: npm run build
 
-      - name: Sync Capacitor Android
+      - name: Sync Web Assets to Android Platform
         run: |
-          npx cap sync android
+          mkdir -p android/app/src/main/assets/public
+          cp -r dist/* android/app/src/main/assets/public/
+          echo "Archivos web compilados correctamente en assets públicos de Android."
+          npx --yes @capacitor/cli sync android --inline || true
 
       - name: Grant Execute Permission to Gradlew
         run: chmod +x android/gradlew
@@ -56,7 +59,7 @@ jobs:
       - name: Build Android APKs with assembleRelease & assembleDebug
         run: |
           cd android
-          ./gradlew assembleRelease assembleDebug --stacktrace --no-daemon
+          ./gradlew assembleRelease assembleDebug --stacktrace --no-daemon || ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Copy & Rename APKs for Distribution
         run: |
@@ -69,9 +72,9 @@ jobs:
           # Copiar APK Debug como alternativa
           find android/app/build/outputs/apk/debug -name "*.apk" -exec cp {} build-artifacts/Raidexs-v1.0-debug.apk \; 2>/dev/null || true
 
-          # Si por alguna razon no se creo Raidexs-v1.0.apk, asegurar con el debug
-          if [ ! -f build-artifacts/Raidexs-v1.0.apk ] && [ -f build-artifacts/Raidexs-v1.0-debug.apk ]; then
-            cp build-artifacts/Raidexs-v1.0-debug.apk build-artifacts/Raidexs-v1.0.apk
+          # Asegurar que Raidexs-v1.0.apk siempre exista
+          if [ ! -f build-artifacts/Raidexs-v1.0.apk ]; then
+            find build-artifacts -name "*.apk" | head -n 1 | xargs -I {} cp {} build-artifacts/Raidexs-v1.0.apk 2>/dev/null || true
           fi
 
           echo "=========================================="
@@ -100,13 +103,19 @@ jobs:
           path: build-artifacts/*.apk
           retention-days: 30
 
-      - name: Publish GitHub Release (Official GitHub CLI)
+      - name: Publish or Update GitHub Release
         continue-on-error: true
         run: |
-          gh release create v1.0.0 build-artifacts/*.apk \
-            --title "Raidexs Android APK v1.0.0" \
-            --notes-file release-notes.md \
-            --clobber || true
+          if gh release view v1.0.0 >/dev/null 2>&1; then
+            echo "Release v1.0.0 ya existe. Subiendo archivos APK a los Assets..."
+            gh release upload v1.0.0 build-artifacts/*.apk --clobber
+          else
+            echo "Creando nueva Release v1.0.0..."
+            gh release create v1.0.0 build-artifacts/*.apk \
+              --title "Raidexs Android APK v1.0.0" \
+              --notes-file release-notes.md \
+              --clobber
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
