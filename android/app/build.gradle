@@ -1,8 +1,9 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.raidexs.app"
-    compileSdk = rootProject.ext.compileSdkVersion
+    namespace "com.raidexs.app"
+    compileSdk rootProject.ext.compileSdkVersion
+
     defaultConfig {
         applicationId "com.raidexs.app"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -12,34 +13,24 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
-             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
 
     signingConfigs {
         release {
-            if (project.hasProperty('RELEASE_STORE_FILE') && file(project.property('RELEASE_STORE_FILE')).exists()) {
-                storeFile file(project.property('RELEASE_STORE_FILE'))
-                storePassword project.property('RELEASE_STORE_PASSWORD')
-                keyAlias project.property('RELEASE_KEY_ALIAS')
-                keyPassword project.property('RELEASE_KEY_PASSWORD')
-            } else if (file('release.keystore').exists()) {
-                storeFile file('release.keystore')
-                storePassword 'raidexs2026'
-                keyAlias 'raidexs'
-                keyPassword 'raidexs2026'
-            }
+            initWith signingConfigs.debug
         }
     }
 
     buildTypes {
         release {
-            // Optimización de buildType release con llaves de firma verificadas:
-            // Si existe keystore personalizado la utiliza; de lo contrario firma automáticamente
-            // con signingConfigs.debug para garantizar que el APK salga siempre firmado y sea 100% instalable en Android.
-            def hasCustomRelease = (project.hasProperty('RELEASE_STORE_FILE') && file(project.property('RELEASE_STORE_FILE')).exists()) || file('release.keystore').exists()
-            signingConfig hasCustomRelease ? signingConfigs.release : signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -49,47 +40,10 @@ android {
             debuggable true
         }
     }
-
-    applicationVariants.all { variant ->
-        variant.outputs.all { output ->
-            def project = "Raidexs"
-            def version = variant.versionName
-            def buildType = variant.buildType.name
-            outputFileName = "${project}-v${version}-${buildType}.apk"
-        }
-    }
-}
-
-// Configuración y verificación de la tarea assembleRelease para asegurar la generación del APK firmado
-afterEvaluate {
-    tasks.named('assembleRelease').configure {
-        doLast {
-            println "=========================================================="
-            println " [Raidexs APK] Tarea assembleRelease completada exitosamente."
-            println " El archivo APK Release firmado y optimizado está listo para descargar."
-            println "=========================================================="
-        }
-    }
-}
-
-// Tarea adicional para verificar y asegurar el APK generado
-tasks.register("verifyReleaseApk") {
-    dependsOn "assembleRelease"
-    description = "Verifica la compilación y firma del APK de Release generado"
-    group = "build"
-    doLast {
-        def apkDir = file("${layout.buildDirectory.get().asFile}/outputs/apk/release")
-        println "Directorio de salida: ${apkDir.absolutePath}"
-        if (apkDir.exists()) {
-            apkDir.eachFileMatch(~/.*\.apk/) { apk ->
-                println "APK de salida verificado: ${apk.name} (${apk.length()} bytes)"
-            }
-        }
-    }
 }
 
 repositories {
-    flatDir{
+    flatDir {
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
     }
 }
