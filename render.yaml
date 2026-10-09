@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: nexplay-store
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VITE_API_URL
+        value: '' # Se deja en blanco porque el frontend y backend corren en el mismo servidor en Render
+      # Debes agregar las siguientes variables de entorno manualmente en el panel de Render:
+      # - GMAIL_USER (ej. tu_correo@gmail.com)
+      # - GMAIL_APP_PASSWORD (la contraseña de aplicación de Gmail)
+      # Y si usas Firebase Admin:
+      # - FIREBASE_PROJECT_ID
+      # - FIREBASE_CLIENT_EMAIL
+      # - FIREBASE_PRIVATE_KEY

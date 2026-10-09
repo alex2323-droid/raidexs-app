@@ -1,0 +1,125 @@
+name: Build Android APK (Raidexs)
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java JDK 21 (Required for Capacitor 8 & Android Gradle Plugin 8.13)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK Environment & Accept Licenses
+        run: |
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
+
+      - name: Install Node Dependencies
+        run: npm install
+
+      - name: Build Web Application
+        run: npm run build
+
+      - name: Sync Capacitor Android
+        run: |
+          npx cap sync android
+
+      - name: Grant Execute Permission to Gradlew
+        run: chmod +x android/gradlew
+
+      - name: Build Android APKs with assembleRelease & assembleDebug
+        run: |
+          cd android
+          ./gradlew assembleRelease assembleDebug --stacktrace --no-daemon
+
+      - name: Copy & Rename APKs for Distribution
+        run: |
+          mkdir -p build-artifacts
+          
+          # Copiar APK Release generado por assembleRelease
+          find android/app/build/outputs/apk/release -name "*.apk" -exec cp {} build-artifacts/Raidexs-v1.0-release.apk \; 2>/dev/null || true
+          find android/app/build/outputs/apk/release -name "*.apk" -exec cp {} build-artifacts/Raidexs-v1.0.apk \; 2>/dev/null || true
+          
+          # Copiar APK Debug como alternativa
+          find android/app/build/outputs/apk/debug -name "*.apk" -exec cp {} build-artifacts/Raidexs-v1.0-debug.apk \; 2>/dev/null || true
+
+          # Si por alguna razon no se creo Raidexs-v1.0.apk, asegurar con el debug
+          if [ ! -f build-artifacts/Raidexs-v1.0.apk ] && [ -f build-artifacts/Raidexs-v1.0-debug.apk ]; then
+            cp build-artifacts/Raidexs-v1.0-debug.apk build-artifacts/Raidexs-v1.0.apk
+          fi
+
+          echo "=========================================="
+          echo "Archivos APK generados listos para distribución:"
+          ls -lh build-artifacts/
+          echo "=========================================="
+
+      - name: Create Release Notes
+        run: |
+          cat << 'NOTE_EOF' > release-notes.md
+          ## 📱 Descarga de la Aplicación Raidexs (APK Oficial)
+
+          ¡Bienvenido a Raidexs!
+
+          ### 📥 Instrucciones de Instalación en tu Android:
+          1. Descarga el archivo **Raidexs-v1.0.apk** (o **Raidexs-v1.0-release.apk**) en la sección de Assets más abajo.
+          2. Si tu teléfono solicita confirmación, pulsa en **'Permitir desde esta fuente'** o **'Descargar de todos modos'**.
+          3. Abre el archivo descargado y presiona **'Instalar'**.
+          4. ¡Listo! Abre Raidexs y disfruta de tus recargas y servicios.
+          NOTE_EOF
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Raidexs-Android-APK
+          path: build-artifacts/*.apk
+          retention-days: 30
+
+      - name: Publish GitHub Release (Official GitHub CLI)
+        continue-on-error: true
+        run: |
+          gh release create v1.0.0 build-artifacts/*.apk \
+            --title "Raidexs Android APK v1.0.0" \
+            --notes-file release-notes.md \
+            --clobber || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fallback Release Action
+        if: always()
+        uses: softprops/action-gh-release@v2
+        continue-on-error: true
+        with:
+          files: build-artifacts/*.apk
+          tag_name: v1.0.0
+          name: Raidexs Android APK v1.0.0
+          body_path: release-notes.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
