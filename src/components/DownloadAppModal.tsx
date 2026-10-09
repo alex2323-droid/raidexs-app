@@ -66,8 +66,8 @@ export default function DownloadAppModal({ isOpen, onClose, siteSettings, isAdmi
 
   const effectiveRepoUrl = siteSettings?.githubRepoUrl || repoUrlInput.trim() || 'https://github.com/alex2323-droid/raidexs-app';
   const releasesUrl = `${effectiveRepoUrl.replace(/\/+$/, '')}/releases`;
-  const defaultDirectApkUrl = `${releasesUrl}/download/v1.0.0/Raidexs-v1.0-debug.apk`;
-  const finalApkUrl = siteSettings?.apkDownloadUrl || releaseAssetUrl || defaultDirectApkUrl;
+  // Si hay release real con APK, usar su enlace directo verificado; de lo contrario abrir la pagina oficial de Releases sin causar error 404
+  const finalApkUrl = siteSettings?.apkDownloadUrl || releaseAssetUrl || releasesUrl;
   const actionsUrl = `${effectiveRepoUrl.replace(/\/+$/, '')}/actions`;
   const editWorkflowUrl = `${effectiveRepoUrl.replace(/\/+$/, '')}/edit/main/.github/workflows/build-apk.yml`;
 

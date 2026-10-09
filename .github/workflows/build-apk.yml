@@ -47,7 +47,8 @@ jobs:
         run: npm run build
 
       - name: Sync Capacitor Android
-        run: npx @capacitor/cli sync android
+        run: |
+          npx cap sync android
 
       - name: Grant Execute Permission to Gradlew
         run: chmod +x android/gradlew
@@ -62,6 +63,7 @@ jobs:
           mkdir -p build-artifacts
           cp android/app/build/outputs/apk/debug/app-debug.apk build-artifacts/Raidexs-v1.0-debug.apk
           echo "APK generado exitosamente: build-artifacts/Raidexs-v1.0-debug.apk"
+          ls -la build-artifacts/
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -70,7 +72,26 @@ jobs:
           path: build-artifacts/Raidexs-v1.0-debug.apk
           retention-days: 30
 
-      - name: Create or Update GitHub Release
+      - name: Publish GitHub Release (Official GitHub CLI)
+        continue-on-error: true
+        run: |
+          gh release create v1.0.0 build-artifacts/Raidexs-v1.0-debug.apk \
+            --title "Raidexs Android APK v1.0.0" \
+            --notes "## 📱 Descarga de la Aplicación Raidexs (APK Oficial)
+
+¡Gracias por descargar Raidexs!
+
+### 📥 Instrucciones de Instalación en Android:
+1. Descarga el archivo adjunto **Raidexs-v1.0-debug.apk** en la sección de Assets.
+2. Si tu teléfono solicita permisos de instalación, selecciona **Permitir desde esta fuente**.
+3. Abre el archivo descargado y presiona **Instalar**.
+4. ¡Listo! Disfruta de tus recargas en Raidexs." \
+            --clobber || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fallback Release Action
+        if: always()
         uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
@@ -79,14 +100,7 @@ jobs:
           name: Raidexs Android APK v1.0.0
           body: |
             ## 📱 Descarga de la Aplicación Raidexs (APK Oficial)
-
-            ¡Gracias por descargar Raidexs!
-
-            ### 📥 Instrucciones de Instalación en Android:
-            1. Descarga el archivo adjunto `Raidexs-v1.0-debug.apk` que aparece abajo en **Assets**.
-            2. Si tu teléfono solicita permisos de instalación, selecciona **"Permitir desde esta fuente"** (Orígenes desconocidos).
-            3. Abre el archivo descargado y presiona **"Instalar"**.
-            4. ¡Listo! Disfruta de recargas rápidas, seguras y al mejor precio desde tu móvil.
+            Descarga `Raidexs-v1.0-debug.apk` e instálalo en tu dispositivo Android.
           draft: false
           prerelease: false
         env:
