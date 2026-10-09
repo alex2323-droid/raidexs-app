@@ -53,39 +53,59 @@ jobs:
       - name: Grant Execute Permission to Gradlew
         run: chmod +x android/gradlew
 
-      - name: Build Debug APK with Gradle
+      - name: Build Android APKs with assembleRelease & assembleDebug
         run: |
           cd android
-          ./gradlew assembleDebug --stacktrace --no-daemon
+          ./gradlew assembleRelease assembleDebug --stacktrace --no-daemon
 
-      - name: Copy & Rename APK for Easy Download
+      - name: Copy & Rename APKs for Distribution
         run: |
           mkdir -p build-artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk build-artifacts/Raidexs-v1.0-debug.apk
-          echo "APK generado exitosamente: build-artifacts/Raidexs-v1.0-debug.apk"
-          ls -la build-artifacts/
+          
+          # Copiar APK Release generado por assembleRelease
+          find android/app/build/outputs/apk/release -name "*.apk" -exec cp {} build-artifacts/Raidexs-v1.0-release.apk \; 2>/dev/null || true
+          find android/app/build/outputs/apk/release -name "*.apk" -exec cp {} build-artifacts/Raidexs-v1.0.apk \; 2>/dev/null || true
+          
+          # Copiar APK Debug como alternativa
+          find android/app/build/outputs/apk/debug -name "*.apk" -exec cp {} build-artifacts/Raidexs-v1.0-debug.apk \; 2>/dev/null || true
+
+          # Si por alguna razon no se creo Raidexs-v1.0.apk, asegurar con el debug
+          if [ ! -f build-artifacts/Raidexs-v1.0.apk ] && [ -f build-artifacts/Raidexs-v1.0-debug.apk ]; then
+            cp build-artifacts/Raidexs-v1.0-debug.apk build-artifacts/Raidexs-v1.0.apk
+          fi
+
+          echo "=========================================="
+          echo "Archivos APK generados listos para distribución:"
+          ls -lh build-artifacts/
+          echo "=========================================="
+
+      - name: Create Release Notes
+        run: |
+          cat << 'NOTE_EOF' > release-notes.md
+          ## 📱 Descarga de la Aplicación Raidexs (APK Oficial)
+
+          ¡Bienvenido a Raidexs!
+
+          ### 📥 Instrucciones de Instalación en tu Android:
+          1. Descarga el archivo **Raidexs-v1.0.apk** (o **Raidexs-v1.0-release.apk**) en la sección de Assets más abajo.
+          2. Si tu teléfono solicita confirmación, pulsa en **'Permitir desde esta fuente'** o **'Descargar de todos modos'**.
+          3. Abre el archivo descargado y presiona **'Instalar'**.
+          4. ¡Listo! Abre Raidexs y disfruta de tus recargas y servicios.
+          NOTE_EOF
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Raidexs-Android-APK
-          path: build-artifacts/Raidexs-v1.0-debug.apk
+          path: build-artifacts/*.apk
           retention-days: 30
 
       - name: Publish GitHub Release (Official GitHub CLI)
         continue-on-error: true
         run: |
-          gh release create v1.0.0 build-artifacts/Raidexs-v1.0-debug.apk \
+          gh release create v1.0.0 build-artifacts/*.apk \
             --title "Raidexs Android APK v1.0.0" \
-            --notes "## 📱 Descarga de la Aplicación Raidexs (APK Oficial)
-
-¡Gracias por descargar Raidexs!
-
-### 📥 Instrucciones de Instalación en Android:
-1. Descarga el archivo adjunto **Raidexs-v1.0-debug.apk** en la sección de Assets.
-2. Si tu teléfono solicita permisos de instalación, selecciona **Permitir desde esta fuente**.
-3. Abre el archivo descargado y presiona **Instalar**.
-4. ¡Listo! Disfruta de tus recargas en Raidexs." \
+            --notes-file release-notes.md \
             --clobber || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -95,13 +115,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
-          files: build-artifacts/Raidexs-v1.0-debug.apk
+          files: build-artifacts/*.apk
           tag_name: v1.0.0
           name: Raidexs Android APK v1.0.0
-          body: |
-            ## 📱 Descarga de la Aplicación Raidexs (APK Oficial)
-            Descarga `Raidexs-v1.0-debug.apk` e instálalo en tu dispositivo Android.
+          body_path: release-notes.md
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
