@@ -723,6 +723,7 @@ export default function App() {
         isOpen={isDownloadModalOpen}
         onClose={() => setIsDownloadModalOpen(false)}
         siteSettings={siteSettings}
+        isAdmin={isAdmin}
       />
 
       {/* Global Cookie Consent Banner */}
