@@ -15,6 +15,7 @@ export default function NexPlayLogo({
   variant = "image",
   logoUrl,
 }: LogoProps) {
+  const effectiveLogoUrl = logoUrl || "/favicon.png";
   const imgSizeClass = {
     sm: "h-11 sm:h-12 w-auto",
     md: "h-14 sm:h-16 w-auto",
@@ -25,19 +26,16 @@ export default function NexPlayLogo({
   if (variant === "compact") {
     return (
       <div className={`inline-flex items-center gap-2.5 ${className}`}>
-        {logoUrl ? (
-          <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-cyan-400/40 shadow-[0_0_12px_rgba(6,182,212,0.4)] flex-shrink-0 bg-black">
-            <img
-              src={logoUrl}
-              alt="Raidexs"
-              className="w-full h-full object-contain"
-            />
-          </div>
-        ) : (
-          <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-cyan-400/40 shadow-[0_0_12px_rgba(6,182,212,0.4)] flex-shrink-0 bg-gradient-to-br from-[#05132d] to-[#091b40] flex items-center justify-center font-display font-black text-cyan-400 text-sm">
-            R
-          </div>
-        )}
+        <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-cyan-400/40 shadow-[0_0_12px_rgba(6,182,212,0.4)] flex-shrink-0 bg-[#05132d]">
+          <img
+            src={effectiveLogoUrl}
+            alt="Raidexs"
+            className="w-full h-full object-contain"
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.display = 'none';
+            }}
+          />
+        </div>
         <div className="flex items-center font-display font-black text-xl tracking-tight uppercase">
           <span className="text-white">RAID</span>
           <span className="text-cyan-400">EXS</span>
@@ -48,24 +46,17 @@ export default function NexPlayLogo({
 
   return (
     <div className={`inline-flex flex-col items-center select-none ${className}`}>
-      {logoUrl ? (
-        <div className="relative group">
-          {/* Luminous cyan backlight blur */}
-          <div className="absolute inset-0 bg-cyan-500/25 blur-xl rounded-2xl pointer-events-none group-hover:bg-cyan-500/40 transition-all duration-300"></div>
+      <div className="relative group">
+        {/* Luminous cyan backlight blur */}
+        <div className="absolute inset-0 bg-cyan-500/25 blur-xl rounded-2xl pointer-events-none group-hover:bg-cyan-500/40 transition-all duration-300"></div>
 
-          {/* High resolution official Raidexs Logo */}
-          <img
-            src={logoUrl}
-            alt="Raidexs - Recargas de Videojuegos"
-            className={`${imgSizeClass} relative z-10 object-contain rounded-2xl drop-shadow-[0_0_20px_rgba(0,194,255,0.45)]`}
-          />
-        </div>
-      ) : (
-        <div className="flex items-center font-display font-black text-3xl tracking-tight uppercase py-2">
-          <span className="text-white">RAID</span>
-          <span className="text-cyan-400 drop-shadow-[0_0_12px_rgba(6,182,212,0.5)]">EXS</span>
-        </div>
-      )}
+        {/* High resolution official Raidexs Logo */}
+        <img
+          src={effectiveLogoUrl}
+          alt="Raidexs - Recargas de Videojuegos"
+          className={`${imgSizeClass} relative z-10 object-contain rounded-2xl drop-shadow-[0_0_20px_rgba(0,194,255,0.45)]`}
+        />
+      </div>
 
       {showSubtitle && (
         <div className="flex items-center gap-2 mt-1.5 w-full justify-center">
