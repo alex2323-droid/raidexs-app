@@ -1804,8 +1804,8 @@ app.get('/api/ip', async (req, res) => {
       }
 
       const [, username, repoName] = match;
-      const sanitizedToken = token.trim();
-      const authenticatedUrl = `https://${encodeURIComponent(sanitizedToken)}@github.com/${username}/${repoName}.git`;
+      const sanitizedToken = token.toString().replace(/\s+/g, '').trim();
+      const authenticatedUrl = `https://x-access-token:${encodeURIComponent(sanitizedToken)}@github.com/${username}/${repoName}.git`;
 
       const { exec } = await import('child_process');
       const util = await import('util');
@@ -1893,7 +1893,11 @@ app.get('/api/ip', async (req, res) => {
       });
     } catch (error: any) {
       console.error('Error in /api/push-to-github:', error);
-      const safeErrorMsg = (error.message || '').replace(req.body?.token, '***');
+      const errText = error?.stderr || error?.message || 'Error desconocido';
+      let safeErrorMsg = errText.replace(/ghp_[a-zA-Z0-9_]+/g, '***').replace(/github_pat_[a-zA-Z0-9_]+/g, '***');
+      if (req.body?.token) {
+        safeErrorMsg = safeErrorMsg.split(req.body.token).join('***');
+      }
       res.status(500).json({
         error: 'Error al subir a GitHub: ' + safeErrorMsg,
         hint: 'Asegúrate de haber creado el repositorio en GitHub y de que tu Token tenga activados los permisos "repo" y "workflow".'

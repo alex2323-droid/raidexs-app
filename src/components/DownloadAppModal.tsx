@@ -516,7 +516,7 @@ git push -u origin main`;
                       <input
                         type="password"
                         value={tokenInput}
-                        onChange={(e) => setTokenInput(e.target.value)}
+                        onChange={(e) => setTokenInput(e.target.value.replace(/\s+/g, ''))}
                         placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                         className="w-full bg-black/60 border border-cyan-500/40 rounded-lg py-2 px-3 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-cyan-400 font-mono"
                       />
