@@ -30,15 +30,18 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK Licenses
+      - name: Setup Android SDK Environment & Accept Licenses
         run: |
-          yes | sdkmanager --licenses || true
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
       - name: Install Node Dependencies
-        run: npm ci || npm install
+        run: npm install
 
       - name: Build Web Application
         run: npm run build
@@ -58,7 +61,7 @@ jobs:
         run: |
           mkdir -p build-artifacts
           cp android/app/build/outputs/apk/debug/app-debug.apk build-artifacts/Raidexs-v1.0-debug.apk
-          echo "APK generated successfully: build-artifacts/Raidexs-v1.0-debug.apk"
+          echo "APK generado exitosamente: build-artifacts/Raidexs-v1.0-debug.apk"
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -69,6 +72,7 @@ jobs:
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
+        continue-on-error: true
         with:
           files: build-artifacts/Raidexs-v1.0-debug.apk
           tag_name: v1.0.0
@@ -79,7 +83,7 @@ jobs:
             ¡Gracias por descargar Raidexs!
 
             ### 📥 Instrucciones de Instalación en Android:
-            1. Descarga el archivo adjunto `Raidexs-v1.0-debug.apk`.
+            1. Descarga el archivo adjunto `Raidexs-v1.0-debug.apk` que aparece abajo en **Assets**.
             2. Si tu teléfono solicita permisos de instalación, selecciona **"Permitir desde esta fuente"** (Orígenes desconocidos).
             3. Abre el archivo descargado y presiona **"Instalar"**.
             4. ¡Listo! Disfruta de recargas rápidas, seguras y al mejor precio desde tu móvil.
