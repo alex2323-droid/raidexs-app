@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email != null && (
+        request.auth.token.email.lower() == 'alexparababi23@gmail.com' ||
+        request.auth.token.email.lower() == 'nexplay2307@gmail.com' ||
+        request.auth.token.email.lower() == 'avila2004alexparababi@gmail.com'
+      );
+    }
+
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    match /games/{gameId} {
+      // Anyone can see the games catalog
+      allow read: if true;
+      // Only admins can modify the pricing and gold
+      allow write: if isAdmin();
+    }
+    match /promoCodes/{codeId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /siteSettings/{document} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /orders/{orderId} {
+      allow read: if (resource == null || (request.auth != null && (resource.data.userId == request.auth.uid || isAdmin())));
+      allow create: if true;
+      allow update: if isAdmin();
+    }
+    match /email_errors/{errorId} {
+      allow read: if isAdmin();
+      allow create: if true;
+    }
+  }
+}

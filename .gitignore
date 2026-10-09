@@ -1,0 +1,24 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env
+.env.local
+!.env.example
+!.env.production
+
+# Android Gradle builds
+android/.gradle/
+android/app/build/
+android/build/
+android/captures/
+android/.idea/
+*.iml
+*.zip
+patch-*.cjs
+fix-*.cjs
+test-*.cjs
+test-*.js
+scrape-*.cjs

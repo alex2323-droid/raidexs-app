@@ -1,0 +1,1128 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "HankGames Reseller API",
+    "version": "1.1.0",
+    "description": "HankGames B2B integration API for resellers (top-up and gift cards).\n\n## Authentication\n1. Get a token from `POST /auth/token` by sending the `x-client-id` and `x-client-secret` headers.\n   - The source IP of your request must be on your account **allowlist** (contact support to register it).\n   - The token is a Bearer token and **expires in 3600 seconds (1 hour)** — handle `401` by re-authenticating.\n2. On every other route, send `Authorization: Bearer <access_token>`.\n\n## Order status webhook (callbacks)\nRegister your endpoint via `POST /callback`. HankGames then sends a **POST** to your URL on **every order\nstatus change** — including asynchronous top-up orders (delivered, failed, out of stock, refunded).\nYou do **not** need to poll. Deliveries are **retried**, **idempotent** (`eventId`) and **signed** (HMAC).\nSee the `POST /callback` endpoint for the payload and rules.\n\n## Supplier privacy\nSupplier names are never exposed. Any supplier reference is returned masked (e.g. `provider_ab12cd`) and no\ncost/margin field is ever returned. Do not build integrations that rely on identifying the supplier.\n\n## Environments\nAn account can operate in `sandbox` or `production` (set on the reseller account).\n",
+    "contact": {
+      "name": "HankGames Support",
+      "email": "support@hankgames.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.hankgames.com/v1/reseller/api",
+      "description": "Production"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Authentication",
+      "description": "Access token issuance"
+    },
+    {
+      "name": "Catalog",
+      "description": "Categories, products, servers, price and stock"
+    },
+    {
+      "name": "Orders",
+      "description": "Order creation, status, capture and cancellation"
+    },
+    {
+      "name": "Account",
+      "description": "Account balance"
+    },
+    {
+      "name": "Webhooks",
+      "description": "Notification callback registration and order status webhook"
+    },
+    {
+      "name": "Meta",
+      "description": "Metadata and error codes"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/auth/token": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Get access token",
+        "description": "Exchanges your client credentials (`x-client-id` + `x-client-secret`) for a Bearer token valid for 1 hour.\nThe source IP must be on the account allowlist.\n",
+        "security": [],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Client ID of your integration account."
+          },
+          {
+            "in": "header",
+            "name": "x-client-secret",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Client Secret of your integration account."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token issued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                },
+                "example": {
+                  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                  "token_type": "Bearer",
+                  "expires_in": 3600
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials or IP not allowlisted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Invalid reseller API credentials."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts (rate limit)."
+          }
+        }
+      }
+    },
+    "/deliver-product": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Create order (deliver product)",
+        "description": "Creates a top-up or gift card order. Use a unique `externalOrderId` per order to guarantee\nidempotency and to allow later lookup.\nFor products that require player data (e.g. `userId`, `server`, `zoneId`) or additional fields,\ninclude them inside `data` (see `GET /product/{productId}/server_list` and\n`POST /validate-user/{productId}`).\n\nTop-up orders are **asynchronous**: this endpoint returns **202** and the final result\n(delivered / failed / refunded) is delivered later via the **order status webhook** (see `POST /callback`).\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderRequest"
+              },
+              "example": {
+                "externalOrderId": "my-order-0001",
+                "data": {
+                  "productId": "665be10ec862a4d64d3ec8c0",
+                  "quantity": 1,
+                  "userId": "123456789",
+                  "server": "",
+                  "zoneId": ""
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order completed or created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCreateResult"
+                },
+                "example": {
+                  "message": "Order Completed",
+                  "orderId": "H120345",
+                  "orderIndex": "H120345",
+                  "transactionId": "H120345",
+                  "externalOrderId": "my-order-0001"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Order accepted and processing. Final status arrives via the order status webhook.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCreateResult"
+                },
+                "example": {
+                  "message": "Order is being processed",
+                  "orderId": "H120345",
+                  "orderIndex": "H120345",
+                  "transactionId": "H120345",
+                  "externalOrderId": "my-order-0001"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request (insufficient balance, missing data, out of stock, etc.).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/expired/invalid token."
+          }
+        }
+      }
+    },
+    "/transaction-status/{transactionId}": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Order status (by transactionId / orderIndex)",
+        "description": "Prefer the **order status webhook** for async updates; use this for on-demand checks.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TransactionIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current order status, including delivered items/pins.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStatus"
+                },
+                "example": {
+                  "orderId": "H120345",
+                  "orderIndex": "H120345",
+                  "transactionId": "H120345",
+                  "externalOrderId": "my-order-0001",
+                  "status": "Finalized",
+                  "statusCode": "delivered",
+                  "items": [
+                    {
+                      "index": "H120345-1",
+                      "product": "Gift Card 50",
+                      "status": "Redeemed",
+                      "pin": "XXXX-XXXX-XXXX"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Order still processing (redemption).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStatus"
+                },
+                "example": {
+                  "orderId": "H120345",
+                  "orderIndex": "H120345",
+                  "transactionId": "H120345",
+                  "externalOrderId": "my-order-0001",
+                  "status": "Approved",
+                  "statusCode": "pending",
+                  "items": [],
+                  "message": "We are processing your redemption. Please check back after sometime"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order not found."
+          }
+        }
+      }
+    },
+    "/order/external/{externalOrderId}": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Order status (by externalOrderId)",
+        "description": "An equivalent alias is also available at `GET /orders/external/{externalOrderId}`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExternalOrderIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order not found."
+          }
+        }
+      }
+    },
+    "/orders/external/{externalOrderId}": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Order status (by externalOrderId — alias)",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExternalOrderIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order not found."
+          }
+        }
+      }
+    },
+    "/transaction/{transactionId}/capture/{index}": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Capture / confirm an order item",
+        "description": "Confirms the redemption/delivery of a specific item (index) of the order.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TransactionIdPath"
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Item index within the order (e.g. \"1\" or \"H120345-1\")."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Item captured; returns the order reference and current status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderRefWithStatus"
+                },
+                "example": {
+                  "id": "H120345",
+                  "orderId": "H120345",
+                  "orderIndex": "H120345",
+                  "transactionId": "H120345",
+                  "externalOrderId": "my-order-0001",
+                  "status": "Finalized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order/item not found."
+          }
+        }
+      }
+    },
+    "/transaction/{index}/cancel": {
+      "post": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Cancel / refund a gift card",
+        "description": "Cancels and refunds an unredeemed gift card item.",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Index of the gift card item to cancel."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Item cancelled/refunded; returns the reference and status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderRefWithStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order not found."
+          }
+        }
+      }
+    },
+    "/category": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "List categories",
+        "description": "Lists the categories available to your account (no internal/supplier/cost data).",
+        "responses": {
+          "200": {
+            "description": "List of categories.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Category"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "665be10ec862a4d64d3ec8c0",
+                    "uniqueId": "netflix",
+                    "name": "Netflix",
+                    "image": "https://cdn.hankgames.com/netflix.png",
+                    "status": true
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/category/{categoryId}/product": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "List products of a category",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "categoryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Products in the category (no cost/supplier).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Product"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "66e4c123a9964c6a5d567f9c",
+                    "uniqueId": "netflix-brasil-50",
+                    "name": "Netflix Brazil 50",
+                    "price": 50,
+                    "currency": "BRL",
+                    "status": true,
+                    "stockStatus": "in_stock"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/product/{productId}/server_list": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "List servers / required fields for a product",
+        "description": "Returns the servers/options and fields that must be sent when creating an order.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProductIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product servers/fields.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                },
+                "example": {
+                  "servers": [
+                    {
+                      "id": "br",
+                      "name": "Brazil"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/product/{productId}/price": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Product selling price",
+        "description": "Returns the selling price (in your account currency). Cost is never returned.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProductIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Selling price.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Price"
+                },
+                "example": {
+                  "amount": 52.9,
+                  "currency": "BRL"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Product not found."
+          }
+        }
+      }
+    },
+    "/product/{productId}/stock": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Check product stock",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProductIdPath"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Product availability.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stock"
+                },
+                "example": {
+                  "instock": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/validate-user/{productId}": {
+      "post": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Validate user/player data for a product",
+        "description": "Validates the fields required by the product (e.g. player ID) before creating the order.\nSend the product's `userInput` fields in the request body.\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ProductIdPath"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "example": {
+                "userId": "123456789",
+                "zoneId": "7"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result (no internal/supplier data).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateResult"
+                },
+                "example": {
+                  "valid": true,
+                  "username": "PlayerName"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid data."
+          }
+        }
+      }
+    },
+    "/user/balance": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Get account balance",
+        "responses": {
+          "200": {
+            "description": "Current reseller wallet balance.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Balance"
+                },
+                "example": {
+                  "balance": 1540.75
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/callback": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Register callback URL (order status webhook)",
+        "description": "Registers the URL that will receive **order status notifications (callbacks)**.\n\nSecurity rules for the URL:\n- Must use **http** or **https** (use **https** in production).\n- Must **not** point to `localhost`, `*.localhost` domains, or private/internal IPs\n  (e.g. `127.0.0.1`, `10.x`, `192.168.x`, `172.16-31.x`, `169.254.x`) — the host is resolved via DNS and validated.\n- The URL must respond with **HTTP 200** to a test POST at registration time.\n\n### Order status webhook\nOnce registered, HankGames sends a **POST** to your `callbackUrl` on **every order status change** —\nincluding asynchronous top-up orders (delivered, failed, out of stock, refunded). You do **not** need to poll.\n\n**Delivery guarantees**\n- Automatic **retries** with backoff until your endpoint returns HTTP 2xx.\n- **Idempotent**: each event carries a stable `eventId`. Deduplicate by it.\n- **Signed**: the request includes an HMAC signature header computed with your client secret — validate it before trusting the payload.\n- Respond **HTTP 200** quickly and process asynchronously on your side.\n\n**Payload (`order.status_changed`)**\n```json\n{\n  \"event\": \"order.status_changed\",\n  \"eventId\": \"657...:order.status_changed:delivered\",\n  \"status\": \"Finalized\",\n  \"statusCode\": \"delivered\",\n  \"orderId\": \"H120345\",\n  \"externalOrderId\": \"my-order-0001\",\n  \"items\": [\n    { \"index\": \"H120345-1\", \"product\": \"Gift Card 50\", \"status\": \"Redeemed\", \"pin\": \"XXXX-XXXX-XXXX\" }\n  ]\n}\n```\n\n**`statusCode` values:** `pending` · `approved` · `processing` · `delivered` · `failed` · `cancelled` · `refunded`.\nTreat `statusCode` as the source of truth; `status` is a human-readable label. Supplier names are never included.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "callbackUrl"
+                ],
+                "properties": {
+                  "callbackUrl": {
+                    "type": "string",
+                    "format": "uri",
+                    "example": "https://your-domain.com/hankgames/webhook"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Callback registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "message": "ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or unsafe URL. Possible messages:\n`Callback URL must use http or https`, `Unsafe callback URL host`,\n`Callback URL host could not be resolved`, `Invalid callback URL`,\n`Expected response status 200 from callback post request`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unsafe callback URL host"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/error-codes": {
+      "get": {
+        "tags": [
+          "Meta"
+        ],
+        "summary": "List of error codes",
+        "responses": {
+          "200": {
+            "description": "Documented error codes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/docs/version": {
+      "get": {
+        "tags": [
+          "Meta"
+        ],
+        "summary": "API metadata / version",
+        "responses": {
+          "200": {
+            "description": "API metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "result": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Token obtained from `POST /auth/token` (expires in 1h)."
+      }
+    },
+    "parameters": {
+      "TransactionIdPath": {
+        "in": "path",
+        "name": "transactionId",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Order identifier (orderIndex, e.g. \"H120345\", or a number)."
+      },
+      "ExternalOrderIdPath": {
+        "in": "path",
+        "name": "externalOrderId",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Your external identifier sent when the order was created."
+      },
+      "ProductIdPath": {
+        "in": "path",
+        "name": "productId",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Reseller product ID."
+      }
+    },
+    "schemas": {
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "example": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "example": 3600,
+            "description": "Validity in seconds."
+          }
+        }
+      },
+      "CreateOrderRequest": {
+        "type": "object",
+        "required": [
+          "externalOrderId",
+          "data"
+        ],
+        "properties": {
+          "externalOrderId": {
+            "type": "string",
+            "description": "Your unique order identifier (idempotency + later lookup)."
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "productId",
+              "quantity"
+            ],
+            "properties": {
+              "productId": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Number of units. For gift cards, N = N pins."
+              },
+              "server": {
+                "type": "string",
+                "description": "Server (if the product requires it)."
+              },
+              "zoneId": {
+                "type": "string",
+                "description": "Zone (if the product requires it)."
+              },
+              "userId": {
+                "type": "string",
+                "description": "Player ID (if the product requires it)."
+              },
+              "tibiaCharacterName": {
+                "type": "string",
+                "description": "Character name (Tibia)."
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "OrderReference": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "example": "H120345"
+          },
+          "orderIndex": {
+            "type": "string",
+            "example": "H120345"
+          },
+          "transactionId": {
+            "type": "string",
+            "example": "H120345"
+          },
+          "externalOrderId": {
+            "type": "string",
+            "example": "my-order-0001"
+          }
+        }
+      },
+      "OrderCreateResult": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/OrderReference"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string",
+                "example": "Order Completed"
+              }
+            }
+          }
+        ]
+      },
+      "OrderRefWithStatus": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/OrderReference"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "example": "H120345"
+              },
+              "status": {
+                "type": "string",
+                "example": "Finalized"
+              }
+            }
+          }
+        ]
+      },
+      "ReportItem": {
+        "type": "object",
+        "description": "A delivered order item. Internal/supplier fields are omitted.",
+        "properties": {
+          "index": {
+            "type": "string",
+            "example": "H120345-1"
+          },
+          "product": {
+            "type": "string",
+            "example": "Gift Card 50"
+          },
+          "status": {
+            "type": "string",
+            "example": "Redeemed"
+          },
+          "pin": {
+            "type": "string",
+            "nullable": true,
+            "example": "XXXX-XXXX-XXXX",
+            "description": "Present only when the item is a code/pin."
+          },
+          "serial": {
+            "type": "string",
+            "nullable": true,
+            "description": "Present only when applicable."
+          }
+        }
+      },
+      "OrderStatus": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/OrderReference"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "example": "Finalized",
+                "description": "Human-readable status label."
+              },
+              "statusCode": {
+                "type": "string",
+                "description": "Stable status code — use this as the source of truth.",
+                "enum": [
+                  "pending",
+                  "approved",
+                  "processing",
+                  "delivered",
+                  "failed",
+                  "cancelled",
+                  "refunded"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "description": "Present while still processing."
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ReportItem"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "WebhookOrderStatusEvent": {
+        "type": "object",
+        "description": "Payload POSTed to your callback URL on every order status change.",
+        "properties": {
+          "event": {
+            "type": "string",
+            "example": "order.status_changed"
+          },
+          "eventId": {
+            "type": "string",
+            "description": "Stable id for idempotency/deduplication."
+          },
+          "status": {
+            "type": "string",
+            "example": "Finalized",
+            "description": "Human-readable label."
+          },
+          "statusCode": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "processing",
+              "delivered",
+              "failed",
+              "cancelled",
+              "refunded"
+            ]
+          },
+          "orderId": {
+            "type": "string",
+            "example": "H120345"
+          },
+          "externalOrderId": {
+            "type": "string",
+            "example": "my-order-0001"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportItem"
+            }
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "uniqueId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "image": {
+            "type": "string"
+          },
+          "status": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Product": {
+        "type": "object",
+        "description": "Public product. Does not include cost, supplier, commission or margin.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "uniqueId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "price": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "status": {
+            "type": "boolean"
+          },
+          "stockStatus": {
+            "type": "string"
+          }
+        }
+      },
+      "Price": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "example": 52.9
+          },
+          "currency": {
+            "type": "string",
+            "example": "BRL"
+          }
+        }
+      },
+      "Stock": {
+        "type": "object",
+        "properties": {
+          "instock": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Balance": {
+        "type": "object",
+        "properties": {
+          "balance": {
+            "type": "number",
+            "example": 1540.75
+          }
+        }
+      },
+      "ValidateResult": {
+        "type": "object",
+        "description": "Validation result. Internal/supplier fields are omitted.",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      }
+    }
+  }
+}
