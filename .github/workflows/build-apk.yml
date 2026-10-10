@@ -39,7 +39,6 @@ jobs:
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
-          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" 2>/dev/null || true
 
       - name: Install Node Dependencies
         run: npm install
@@ -47,74 +46,47 @@ jobs:
       - name: Build Web Application
         run: npm run build
 
-      - name: Sync Web Assets to Android Platform
+      - name: Sync Capacitor Android
         run: |
-          mkdir -p android/app/src/main/assets/public
-          cp -r dist/* android/app/src/main/assets/public/
-          echo "Archivos web compilados correctamente en assets públicos de Android."
-          npx --yes @capacitor/cli sync android --inline || true
+          npx cap sync android
 
       - name: Grant Execute Permission to Gradlew
         run: chmod +x android/gradlew
 
-      - name: Build Android APKs with assembleRelease & assembleDebug
+      - name: Build Debug APK with Gradle
         run: |
           cd android
-          ./gradlew assembleRelease --stacktrace --no-daemon || ./gradlew assembleDebug --stacktrace --no-daemon
+          ./gradlew assembleDebug --stacktrace --no-daemon
 
-      - name: Copy & Rename APKs for Distribution
-        if: always()
+      - name: Copy & Rename APK for Easy Download
         run: |
           mkdir -p build-artifacts
-          find android/app/build/outputs/apk -name "*.apk" -exec cp {} build-artifacts/ \; 2>/dev/null || true
-          FIRST_APK=$(find build-artifacts -name "*.apk" | head -n 1)
-          if [ -n "$FIRST_APK" ]; then
-            cp "$FIRST_APK" build-artifacts/Raidexs-v1.0.apk
-            cp "$FIRST_APK" build-artifacts/Raidexs-v1.0-release.apk
-          fi
-          echo "Archivos APK generados:"
-          ls -lh build-artifacts/
-
-      - name: Create Release Notes
-        if: always()
-        run: |
-          cat << 'NOTE_EOF' > release-notes.md
-          ## 📱 Descarga de la Aplicación Raidexs (APK Oficial)
-
-          ¡Bienvenido a Raidexs!
-
-          ### 📥 Instrucciones de Instalación en tu Android:
-          1. Descarga el archivo **Raidexs-v1.0.apk** en la sección de Assets más abajo.
-          2. Si tu teléfono solicita confirmación, pulsa en **'Permitir desde esta fuente'**.
-          3. Abre el archivo descargado y presiona **'Instalar'**.
-          NOTE_EOF
+          cp android/app/build/outputs/apk/debug/app-debug.apk build-artifacts/Raidexs-v1.0-debug.apk
+          echo "APK generado exitosamente: build-artifacts/Raidexs-v1.0-debug.apk"
+          ls -la build-artifacts/
 
       - name: Upload APK Artifact
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Raidexs-Android-APK
-          path: build-artifacts/*.apk
+          path: build-artifacts/Raidexs-v1.0-debug.apk
           retention-days: 30
 
-      - name: Publish or Update GitHub Release
-        if: always()
+      - name: Publish GitHub Release (Official GitHub CLI)
         continue-on-error: true
         run: |
-          if [ ! -f build-artifacts/Raidexs-v1.0.apk ]; then
-            echo "No se encontró ningún APK para publicar en Release."
-            exit 0
-          fi
-          if gh release view v1.0.0 >/dev/null 2>&1; then
-            echo "Release v1.0.0 ya existe. Subiendo archivos APK a los Assets..."
-            gh release upload v1.0.0 build-artifacts/*.apk --clobber
-          else
-            echo "Creando nueva Release v1.0.0..."
-            gh release create v1.0.0 build-artifacts/*.apk \
-              --title "Raidexs Android APK v1.0.0" \
-              --notes-file release-notes.md \
-              --clobber
-          fi
+          gh release create v1.0.0 build-artifacts/Raidexs-v1.0-debug.apk \
+            --title "Raidexs Android APK v1.0.0" \
+            --notes "## 📱 Descarga de la Aplicación Raidexs (APK Oficial)
+
+¡Gracias por descargar Raidexs!
+
+### 📥 Instrucciones de Instalación en Android:
+1. Descarga el archivo adjunto **Raidexs-v1.0-debug.apk** en la sección de Assets.
+2. Si tu teléfono solicita permisos de instalación, selecciona **Permitir desde esta fuente**.
+3. Abre el archivo descargado y presiona **Instalar**.
+4. ¡Listo! Disfruta de tus recargas en Raidexs." \
+            --clobber || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -123,11 +95,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         continue-on-error: true
         with:
-          files: build-artifacts/*.apk
+          files: build-artifacts/Raidexs-v1.0-debug.apk
           tag_name: v1.0.0
           name: Raidexs Android APK v1.0.0
-          body_path: release-notes.md
+          body: |
+            ## 📱 Descarga de la Aplicación Raidexs (APK Oficial)
+            Descarga `Raidexs-v1.0-debug.apk` e instálalo en tu dispositivo Android.
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
