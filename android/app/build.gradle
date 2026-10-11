@@ -8,8 +8,8 @@ android {
         applicationId "com.raidexs.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -24,7 +24,14 @@ android {
 
     signingConfigs {
         release {
-            initWith signingConfigs.debug
+            if (file('raidexs-release.keystore').exists()) {
+                storeFile file('raidexs-release.keystore')
+                storePassword 'raidexs123'
+                keyAlias 'raidexs'
+                keyPassword 'raidexs123'
+            } else {
+                initWith signingConfigs.debug
+            }
         }
     }
 
@@ -36,7 +43,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             debuggable true
         }
     }
